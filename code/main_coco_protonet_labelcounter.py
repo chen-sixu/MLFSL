@@ -111,8 +111,45 @@ else:
 save_path = '-'.join([args['savepath'], args['modeltype'], 'cnn-rnn'])
 
 #if args['model_type'] == 'ConvNet':
-optimizer = torch.optim.Adam(list(net.parameters())+list(label_counter.parameters()), lr=args['lr'])
+optimizer = torch.optim.Adam(list(net.parameters())+list(label_counter.parameters())+list(label_estimator.parameters()), lr=args['lr'])
 # optimizer=torch.optim.SGD(list(net.parameters())+list(label_counter.parameters()), lr=args['lr'])
+
+def kaiming_normal_init_net(net):
+    for name, param in net.named_parameters():
+        if 'weight' in name and len(param.shape) == 2:
+            nn.init.kaiming_normal_(param)
+        elif 'bias' in name:
+            nn.init.zeros_(param)
+
+# Label estimator
+class LE(nn.Module):
+    def __init__(self, num_feature, num_classes, hidden_dim=128):
+        super(LE, self).__init__()
+        self.fe1 = nn.Sequential(
+            nn.Linear(num_feature, hidden_dim),
+            nn.LeakyReLU(),
+            nn.BatchNorm1d(hidden_dim),
+        )
+        self.fe2 = nn.Linear(hidden_dim, hidden_dim)
+        self.le1 = nn.Sequential(
+            nn.Linear(num_classes, hidden_dim),
+            nn.LeakyReLU(),
+            nn.BatchNorm1d(hidden_dim),
+        )
+        self.le2 = nn.Linear(hidden_dim, hidden_dim)
+        self.de1 = nn.Sequential(
+            nn.Linear(2 * hidden_dim, num_classes),
+            nn.LeakyReLU(),
+            nn.BatchNorm1d(num_classes),
+        )
+        self.de2 = nn.Linear(num_classes, num_classes)
+
+    def forward(self, x, y):
+        x = self.fe1(x) + self.fe2(self.fe1(x))
+        y = self.le1(y) + self.le2(self.le1(y))
+        d = torch.cat([x, y], dim=-1)
+        d = self.de1(d) + self.de2(self.de1(d))
+        return d
 
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=stepsize, gamma=0.5)
 # elif args['model_type'] == 'ResNet':
@@ -135,6 +172,42 @@ prototypes = torch.zeros(total_label_perepisode, feature_size).cuda('cuda:0')
 np.seterr(all='raise')
 best_epoch=0
 best_map=0
+
+label_estimator = LE(feature_size, total_label_size).cuda('cuda:0')
+kaiming_normal_init_net(label_estimator)
+
+def set_forward_loss(pred, le, x=None, y=None):
+    assert y is not None
+    loss_pred_cls = bceloss(pred, y)
+    loss_pred_ld = nn.CrossEntropyLoss()(pred, torch.softmax(le.detach(), dim=1))
+    loss_le_cls = loss_enhanced(le, pred, y)
+    loss_le_spec = nn.CrossEntropyLoss()(le, torch.softmax(pred.detach(), dim=1))
+        
+    loss_pred = 0.001 * loss_pred_ld + 0.999 * loss_pred_cls
+    loss_le = 0.001 * loss_le_spec + 0.999 * loss_le_cls
+    return loss_le + loss_pred
+
+
+def loss_enhanced(pred, teach, y):
+    eps = 1e-7
+    gamma1 = 0
+    gamma2 = 1
+    x_sigmoid = torch.sigmoid(pred)
+    los_pos = y * torch.log(x_sigmoid.clamp(min=eps, max=1 - eps))
+    los_neg = (1 - y) * torch.log((1 - x_sigmoid).clamp(min=eps, max=1 - eps))
+    loss = los_pos + los_neg
+    with torch.no_grad():
+        teach_sigmoid = torch.sigmoid(teach)
+        teach_pos = teach_sigmoid
+        teach_neg = 1 - teach_sigmoid
+        pt0 = teach_pos * y
+        pt1 = teach_neg * (1 - y)  # pt = p if t > 0 else 1-p
+        pt = pt0 + pt1
+        one_sided_gamma = gamma1 * y + gamma2 * (1 - y)
+        one_sided_w = torch.pow(1 - pt, one_sided_gamma)
+    loss *= one_sided_w
+    return -loss.mean()
+
 for epoch in range(1, 500):
 
     cc = 0
@@ -195,9 +268,11 @@ for epoch in range(1, 500):
 
         prototypes = torch.stack(prototypes)
         query_features = net(data[:query_size])
-        logits = euclidean_metric(query_features, prototypes)#relationnet(relation_pairs).view(-1, total_label_perepisode)
+        raw_logits = euclidean_metric(query_features, prototypes)#relationnet(relation_pairs).view(-1, total_label_perepisode)
+        temp_logits = -raw_logits
+        le = label_estimator(query_features.detach(), label_queries)
 
-
+        flem_loss = set_forward_loss(temp_logits, le, query_features, label_queries)
 
         ###### NEW BEGIN
         results, y_pred, num_label_ori_pred = label_counter(all_support_features, query_features, label_support_num)
@@ -206,11 +281,12 @@ for epoch in range(1, 500):
 
         loss_count = F.cross_entropy(results.view(-1, results.shape[-1]), gt_count_label.view(-1).long())
 
-        logits = F.softmax(logits, dim=-1)
+        logits = F.softmax(raw_logits, dim=-1)
         #logits_clone = logits.clone()
         #label_queries_norm = label_queries.float()/torch.norm(label_queries.float(), p=1, dim=-1, keepdim=True)
         ############################ LOSSSS ##########################################################
-        loss = bceloss(logits.float()/0.05, label_queries.float()) + 0.01*loss_count
+        # loss = bceloss(logits.float()/0.05, label_queries.float()) + 0.01*loss_count
+        loss = flem_loss + 0.01 * loss_count
 
 
         #INFERENCE

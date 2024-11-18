@@ -30,8 +30,29 @@ from networks.cnn import CNN
 from torch.nn.utils import clip_grad_norm_
 import torchvision.models as models
 from dataloader.episode_nuswide_set_k2 import NusWideSet
-
+import logging
 #args = docopt(__doc__)
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)  # Set the desired logging level
+
+# Create handlers
+c_handler = logging.StreamHandler()       # Console handler
+f_handler = logging.FileHandler('training.log')  # File handler
+
+# Set levels for handlers if needed
+c_handler.setLevel(logging.INFO)
+f_handler.setLevel(logging.INFO)
+
+# Create formatters and add them to handlers
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+c_handler.setFormatter(formatter)
+f_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
 
 def load_args(args):
     dd = {}
@@ -52,9 +73,9 @@ def load_args(args):
 
 #args = load_args(args)
 
-args={'lr':0.01, 'dataset':'COCO2017', 'datapath':'./data', 'savepath':'./save/imaterialist_mlpn',
+args={'lr':0.01, 'dataset':'COCO2017', 'datapath':'/root/autodl-tmp', 'savepath':'./save/imaterialist_mlpn',
       'modeltype':'ConvNet', 'batchsize':1, 'shot':1, 'nway':10}
-print(args)
+logging.info(args)
 all_label_size = {'coco':81}
 total_label_size = args['nway']#all_label_size[args['dataset']]
 batch_size = args['batchsize']
@@ -100,7 +121,7 @@ if args['modeltype'] == 'ConvNet':
     stepsize = 50
     #sigma = 50
     sigma = 50
-    print('convnet')
+    logging.info('convnet')
     label_counter = LabelCounter(feature_dim=1600).cuda('cuda:0')
 else:
     net = ResNet10().cuda('cuda:0')
@@ -246,7 +267,7 @@ for epoch in range(1, 500):
         optimizer.step()
 
     lr_scheduler.step()
-    print('[TRAIN] epoch {}'
+    logging.info('[TRAIN] epoch {}'
           .format(epoch))
 
     if maxs_train_F1 < va_F1.item():
@@ -254,7 +275,7 @@ for epoch in range(1, 500):
 
 
 
-    print('[TRAIN] avg loss={:.4f} PR={:.4f} RE={:.4f} F1={:.4f} maxsF1={:.4f}, va_num={:.4f}, absolute_acc_count={:.4f}'
+    logging.info('[TRAIN] avg loss={:.4f} PR={:.4f} RE={:.4f} F1={:.4f} maxsF1={:.4f}, va_num={:.4f}, absolute_acc_count={:.4f}'
           .format(lossva.item(), va_PR.item(), va_RE.item(), va_F1.item(), maxs_train_F1, va_num.item(), absolute_acc_count.item()))
 
 
@@ -375,7 +396,7 @@ for epoch in range(1, 500):
             print("FAIL")
 
     std = np.std(acc_all) * 1.96 / np.sqrt(iter)
-    print('Final {}:     F1={:.2f}({:.2f})'.format(epoch, np.mean(acc_all) * 100, std * 100))
+    logging.info('Final {}:     F1={:.2f}({:.2f})'.format(epoch, np.mean(acc_all) * 100, std * 100))
 
     if maxs_eval_F1 < va_val_F1.item():
         maxs_eval_F1 = va_val_F1.item()
@@ -383,6 +404,6 @@ for epoch in range(1, 500):
     if best_map < ap/iter:
         best_map = ap/iter
         best_epoch = epoch
-    print('[EVAL] avg loss={:.4f} PR={:.4f} RE={:.4f} F1={:.4f} maxsF1={:.4f} map={:.4f}, va-num={:.4f}, absolute_acc_count={:.4f}'
+    logging.info('[EVAL] avg loss={:.4f} PR={:.4f} RE={:.4f} F1={:.4f} maxsF1={:.4f} map={:.4f}, va-num={:.4f}, absolute_acc_count={:.4f}'
           .format(lossva.item(), va_val_PR.item(), va_val_RE.item(), va_val_F1.item(), maxs_eval_F1, ap/iter, va_num.item(), absolute_acc_count.item()))
-    print('best map : ' + str(best_map) + ' at epoch ' + str(best_epoch))
+    logging.info('best map : ' + str(best_map) + ' at epoch ' + str(best_epoch))

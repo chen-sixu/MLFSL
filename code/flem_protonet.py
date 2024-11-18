@@ -41,7 +41,7 @@ logger.setLevel(logging.INFO)  # Set the desired logging level
 
 # Create handlers
 c_handler = logging.StreamHandler()       # Console handler
-f_handler = logging.FileHandler('training.log')  # File handler
+f_handler = logging.FileHandler('flem_protonet.log')  # File handler
 
 # Set levels for handlers if needed
 c_handler.setLevel(logging.INFO)
@@ -61,7 +61,7 @@ def load_args(args):
     dd['lr'] = 0.001#float(args['--learningrate'])
     dd['dataset'] = 'coco'#str(args['--dataset'])
     dd['datapath'] = str(args['--datapath'])
-    dd['savepath'] = './save'#str(args['--savepath'])
+    dd['savepath'] = './save/flem_protonet'#str(args['--savepath'])
     dd['modeltype'] = 'ConvNet'#str(args['--modeltype'])
     dd['batchsize'] = 1#int(args['--batchsize'])
     dd['shot'] = 1#int(args['--shot'])
@@ -75,7 +75,7 @@ def load_args(args):
 
 #args = load_args(args)
 
-args={'lr':0.01, 'dataset':'COCO2017', 'datapath':'/root/autodl-tmp', 'savepath':'./save/imaterialist_mlpn',
+args={'lr':0.01, 'dataset':'COCO2017', 'datapath':'/root/autodl-tmp', 'savepath':'./save/flem_protonet',
       'modeltype':'ConvNet', 'batchsize':1, 'shot':1, 'nway':10}
 logging.info(args)
 all_label_size = {'coco':81}
@@ -360,7 +360,7 @@ for epoch in range(1, 500):
           .format(lossva.item(), va_PR.item(), va_RE.item(), va_F1.item(), maxs_train_F1, va_num.item(), absolute_acc_count.item()))
 
 
-    save_model('last_epoch-'+ args['modeltype'] +'-coco-protonetsmax-'+str(args['nway'])+'-'+str(args['shot'])+'shot')
+    save_model('last_epoch-'+ args['modeltype'] +'-coco-flem_protonet-'+str(args['nway'])+'-'+str(args['shot'])+'shot')
 
     if epoch % 5 != 0:
         continue
@@ -481,7 +481,7 @@ for epoch in range(1, 500):
 
     if maxs_eval_F1 < va_val_F1.item():
         maxs_eval_F1 = va_val_F1.item()
-        save_model('best_epoch-'+ args['modeltype'] +'-coco-protonetsmax-'+str(args['nway'])+'-'+str(args['shot'])+'shot')
+        save_model('best_epoch-'+ args['modeltype'] +'-coco-flem_protonet-'+str(args['nway'])+'-'+str(args['shot'])+'shot')
     if best_map < ap/iter:
         best_map = ap/iter
         best_epoch = epoch

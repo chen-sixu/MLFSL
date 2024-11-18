@@ -15,6 +15,7 @@ from docopt import docopt
 from dataloader.episode_coco_set_k2 import CocoSet
 from utils import pprint, accuracy_calc, process_label_coco_fewshot_definedlabel, Averager, acc_topk_definedlabel, create_mask, euclidean_metric, count_acc,count_acc_onehot
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from torch.utils.data import DataLoader
@@ -132,9 +133,6 @@ else:
 
 save_path = '-'.join([args['savepath'], args['modeltype'], 'cnn-rnn'])
 
-#if args['model_type'] == 'ConvNet':
-optimizer = torch.optim.Adam(list(net.parameters())+list(label_counter.parameters())+list(label_estimator.parameters()), lr=args['lr'])
-# optimizer=torch.optim.SGD(list(net.parameters())+list(label_counter.parameters()), lr=args['lr'])
 
 def kaiming_normal_init_net(net):
     for name, param in net.named_parameters():
@@ -173,6 +171,13 @@ class LE(nn.Module):
         d = self.de1(d) + self.de2(self.de1(d))
         return d
 
+label_estimator = LE(feature_size, total_label_size).cuda('cuda:0')
+kaiming_normal_init_net(label_estimator)
+
+#if args['model_type'] == 'ConvNet':
+optimizer = torch.optim.Adam(list(net.parameters())+list(label_counter.parameters())+list(label_estimator.parameters()), lr=args['lr'])
+# optimizer=torch.optim.SGD(list(net.parameters())+list(label_counter.parameters()), lr=args['lr'])
+
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=stepsize, gamma=0.5)
 # elif args['model_type'] == 'ResNet':
 #     optimizer = torch.optim.SGD(net.parameters(), lr=args['lr'], momentum=0.9, nesterov=True, weight_decay=0.0005)
@@ -195,18 +200,17 @@ np.seterr(all='raise')
 best_epoch=0
 best_map=0
 
-label_estimator = LE(feature_size, total_label_size).cuda('cuda:0')
-kaiming_normal_init_net(label_estimator)
 
 def set_forward_loss(pred, le, x=None, y=None):
     assert y is not None
+    y = y.float()
     loss_pred_cls = bceloss(pred, y)
     loss_pred_ld = nn.CrossEntropyLoss()(pred, torch.softmax(le.detach(), dim=1))
     loss_le_cls = loss_enhanced(le, pred, y)
     loss_le_spec = nn.CrossEntropyLoss()(le, torch.softmax(pred.detach(), dim=1))
         
-    loss_pred = 0.001 * loss_pred_ld + 0.999 * loss_pred_cls
-    loss_le = 0.001 * loss_le_spec + 0.999 * loss_le_cls
+    loss_pred = 0.01 * loss_pred_ld + 0.99 * loss_pred_cls
+    loss_le = 0.01 * loss_le_spec + 0.99 * loss_le_cls
     return loss_le + loss_pred
 
 
@@ -292,7 +296,7 @@ for epoch in range(1, 500):
         query_features = net(data[:query_size])
         raw_logits = euclidean_metric(query_features, prototypes)#relationnet(relation_pairs).view(-1, total_label_perepisode)
         temp_logits = -raw_logits
-        le = label_estimator(query_features.detach(), label_queries)
+        le = label_estimator(query_features.detach(), label_queries.float())
 
         flem_loss = set_forward_loss(temp_logits, le, query_features, label_queries)
 

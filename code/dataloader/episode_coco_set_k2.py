@@ -7,6 +7,7 @@ import numpy as np
 import random
 import torch
 from PIL import ImageEnhance
+import logging
 
 THIS_PATH = osp.dirname(__file__)
 PATH = '/autodl-tmp/COCO2017'
@@ -23,7 +24,7 @@ class CocoSet(Dataset):
         self.aug = aug
         self.class_type=class_type
         manualSeed = 8601#random.randint(1, 10000)
-        print("Random Seed: ", manualSeed)
+        logging.info("Random Seed: ", manualSeed)
         random.seed(manualSeed)
         torch.cuda.manual_seed_all(manualSeed)
         PATH=osp.join(path,args['dataset'])
@@ -50,7 +51,7 @@ class CocoSet(Dataset):
         # Transformation
         if args['modeltype'] == 'ConvNet':
             self.image_size = 84
-            print('use convnet transform!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            logging.info('use convnet transform!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
             self.transform = transforms.Compose([
                 transforms.Resize(92),
                 transforms.CenterCrop(self.image_size),
@@ -60,7 +61,7 @@ class CocoSet(Dataset):
             ])
         elif args['modeltype'] == 'ResNet':
             self.image_size = 224
-            print('use ResNet transform!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            logging.info('use ResNet transform!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
             self.transform = transform
         else:
             raise ValueError('Non-supported Network Types. Please Revise Data Pre-Processing Scripts.')
@@ -118,8 +119,8 @@ class CocoSet(Dataset):
             imgs_labels.append(img_labels)
             img_classnames=','.join([str(label) for label in img_labels])
             imgs_classnames.append(img_classnames)
-        print(i)
-        print('%d images in total'%len(imgs_paths))
+        logging.info(i)
+        logging.info('%d images in total'%len(imgs_paths))
         return imgs_paths, imgs_labels,imgs_classnames
 
 
